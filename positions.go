@@ -2,6 +2,7 @@ package capital
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 )
 
@@ -114,4 +115,44 @@ func (c *Client) ClosePosition(ctx context.Context, dealID string) (*DealConfirm
 		return nil, err
 	}
 	return c.confirmDeal(ctx, ref.DealReference)
+}
+
+// ClosePositionPartial closes part of an open position by opening an
+// opposite-direction trade on the same market for the given size.
+//
+// Capital.com's public API has no native partial-close endpoint — DELETE
+// /positions/{dealId} always closes a position in full, with no size
+// parameter. On accounts in netting mode (the default), opening a trade in
+// the opposite direction on the same epic nets against the existing
+// position instead of opening a second one — this is how partial closes
+// work on Capital.com's own web/app UI. ClosePositionPartial checks the
+// account's hedging-mode setting first and refuses to proceed if hedging
+// mode is enabled, since in that mode the opposing trade would open a
+// separate position rather than reduce this one.
+func (c *Client) ClosePositionPartial(ctx context.Context, dealID string, size float64) (*DealConfirmation, error) {
+	if err := c.ensureSession(ctx); err != nil {
+		return nil, err
+	}
+
+	prefs, err := c.GetAccountPreferences(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if prefs.HedgingMode {
+		return nil, fmt.Errorf("capital: partial close is not supported with hedging mode enabled")
+	}
+
+	pos, err := c.GetPosition(ctx, dealID)
+	if err != nil {
+		return nil, err
+	}
+	if size <= 0 || size >= pos.Position.Size {
+		return nil, fmt.Errorf("capital: partial close size must be greater than 0 and less than the position size (%v)", pos.Position.Size)
+	}
+
+	opposite := Sell
+	if pos.Position.Direction == Sell {
+		opposite = Buy
+	}
+	return c.CreatePosition(ctx, pos.Market.Epic, opposite, size)
 }

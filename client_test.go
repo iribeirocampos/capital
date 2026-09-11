@@ -205,6 +205,83 @@ func TestCreateAndClosePosition(t *testing.T) {
 	}
 }
 
+func TestClosePositionPartial(t *testing.T) {
+	ts := newTestServer(t)
+	c := ts.client()
+
+	ts.mux.HandleFunc("/accounts/preferences", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"hedgingMode": false})
+	})
+	ts.mux.HandleFunc("/positions/deal-1", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"position": map[string]any{
+				"dealId":    "deal-1",
+				"direction": "BUY",
+				"size":      2,
+			},
+			"market": map[string]any{
+				"epic": "GOLD",
+			},
+		})
+	})
+	ts.mux.HandleFunc("/positions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		var body createPositionRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body.Epic != "GOLD" || body.Direction != Sell || body.Size != 1 {
+			t.Errorf("unexpected request body: %+v", body)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"dealReference": "ref-partial"})
+	})
+	ts.mux.HandleFunc("/confirms/ref-partial", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"dealReference": "ref-partial",
+			"dealId":        "deal-2",
+			"status":        "OPEN",
+			"epic":          "GOLD",
+		})
+	})
+
+	conf, err := c.ClosePositionPartial(context.Background(), "deal-1", 1)
+	if err != nil {
+		t.Fatalf("ClosePositionPartial() error = %v", err)
+	}
+	if conf.DealID != "deal-2" {
+		t.Fatalf("DealID = %q, want %q", conf.DealID, "deal-2")
+	}
+}
+
+func TestClosePositionPartialRejectsHedgingMode(t *testing.T) {
+	ts := newTestServer(t)
+	c := ts.client()
+
+	ts.mux.HandleFunc("/accounts/preferences", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"hedgingMode": true})
+	})
+	ts.mux.HandleFunc("/positions/deal-1", func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("expected GetPosition not to be called when hedging mode is enabled")
+	})
+	ts.mux.HandleFunc("/positions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			t.Fatal("expected CreatePosition not to be called when hedging mode is enabled")
+		}
+		http.NotFound(w, r)
+	})
+
+	if _, err := c.ClosePositionPartial(context.Background(), "deal-1", 1); err == nil {
+		t.Fatal("expected an error when hedging mode is enabled")
+	}
+}
+
 func TestSearchMarkets(t *testing.T) {
 	ts := newTestServer(t)
 	c := ts.client()

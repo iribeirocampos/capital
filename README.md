@@ -15,6 +15,7 @@ you want to automate interactions with Capital.com from Go, stick around.
   on expiry, instead of opening a new session on every call
 - `context.Context` on every network call
 - Positions and working (limit/stop) order management
+- Partial position close via opposite-direction netting, with a hedging-mode safety check
 - Market navigation, market search, and historical prices
 - Client sentiment, watchlists, account activity and transaction history
 - Typed errors (`*capital.APIError`) carrying the API's status code and error code
