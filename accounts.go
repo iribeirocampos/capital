@@ -36,12 +36,19 @@ func (c *Client) ListAccounts(ctx context.Context) ([]Account, error) {
 	return resp.Accounts, nil
 }
 
+// Leverage describes the current and available leverage ratios for one
+// asset class.
+type Leverage struct {
+	Current   float64   `json:"current"`
+	Available []float64 `json:"available"`
+}
+
 // AccountPreferences holds leverage and hedging-mode settings for the
 // active account. Leverages maps an asset class (e.g. "SHARES", "INDICES",
-// "CRYPTOCURRENCIES") to its leverage ratio.
+// "CRYPTOCURRENCIES") to its leverage settings.
 type AccountPreferences struct {
-	Leverages   map[string]float64 `json:"leverages"`
-	HedgingMode bool               `json:"hedgingMode"`
+	Leverages   map[string]Leverage `json:"leverages"`
+	HedgingMode bool                `json:"hedgingMode"`
 }
 
 // GetAccountPreferences returns the leverage and hedging-mode settings for
@@ -57,13 +64,22 @@ func (c *Client) GetAccountPreferences(ctx context.Context) (*AccountPreferences
 	return &prefs, nil
 }
 
+type updateAccountPreferencesRequest struct {
+	Leverages   map[string]float64 `json:"leverages,omitempty"`
+	HedgingMode bool               `json:"hedgingMode"`
+}
+
 // UpdateAccountPreferences updates leverage and hedging-mode settings for
-// the active account.
-func (c *Client) UpdateAccountPreferences(ctx context.Context, prefs AccountPreferences) error {
+// the active account. leverages maps an asset class (e.g. "SHARES",
+// "INDICES", "CRYPTOCURRENCIES") to the desired leverage ratio — see
+// AccountPreferences.Leverages for the values currently available to your
+// account; pass nil to leave leverages unchanged.
+func (c *Client) UpdateAccountPreferences(ctx context.Context, leverages map[string]float64, hedgingMode bool) error {
 	if err := c.ensureSession(ctx); err != nil {
 		return err
 	}
-	return c.doRequest(ctx, http.MethodPut, "/accounts/preferences", prefs, nil)
+	req := updateAccountPreferencesRequest{Leverages: leverages, HedgingMode: hedgingMode}
+	return c.doRequest(ctx, http.MethodPut, "/accounts/preferences", req, nil)
 }
 
 type topUpRequest struct {
