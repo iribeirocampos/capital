@@ -86,6 +86,13 @@ type DealConfirmation struct {
 	Level         float64   `json:"level"`
 	Size          float64   `json:"size"`
 	Epic          string    `json:"epic"`
+
+	// Raw is the verbatim JSON body of the /confirms response. The typed
+	// fields above don't cover everything the API can send (e.g. the
+	// affectedDeals array on multi-leg confirmations, or reject-specific
+	// fields); callers that need to diagnose a REJECTED confirmation with
+	// an empty Reason can fall back to inspecting this.
+	Raw string `json:"-"`
 }
 
 type dealReferenceResponse struct {
@@ -94,8 +101,10 @@ type dealReferenceResponse struct {
 
 func (c *Client) confirmDeal(ctx context.Context, dealReference string) (*DealConfirmation, error) {
 	var conf DealConfirmation
-	if err := c.doRequest(ctx, http.MethodGet, "/confirms/"+dealReference, nil, &conf); err != nil {
+	raw, err := c.doRequestRawBody(ctx, http.MethodGet, "/confirms/"+dealReference, nil, &conf)
+	if err != nil {
 		return nil, err
 	}
+	conf.Raw = string(raw)
 	return &conf, nil
 }

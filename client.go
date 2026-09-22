@@ -174,7 +174,7 @@ func (c *Client) rawRequest(ctx context.Context, method, path string, body any) 
 // into out, if non-nil. It transparently re-authenticates and retries once
 // if the API reports the session as invalid or expired.
 func (c *Client) doRequest(ctx context.Context, method, path string, body, out any) error {
-	_, err := c.doRequestHeaders(ctx, method, path, body, out, true)
+	_, _, err := c.doRequestFull(ctx, method, path, body, out, true)
 	return err
 }
 
@@ -183,9 +183,25 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body, out a
 // caller opt out of the auto re-login retry, which Login itself must do to
 // avoid recursing into itself on a failed login.
 func (c *Client) doRequestHeaders(ctx context.Context, method, path string, body, out any, retryOnAuthFailure bool) (http.Header, error) {
+	headers, _, err := c.doRequestFull(ctx, method, path, body, out, retryOnAuthFailure)
+	return headers, err
+}
+
+// doRequestRawBody is doRequest's superset for callers that also need the
+// raw response body verbatim, in addition to the JSON-decoded out value -
+// e.g. to preserve fields the API sends but the typed response struct
+// doesn't model, for diagnostics.
+func (c *Client) doRequestRawBody(ctx context.Context, method, path string, body, out any) ([]byte, error) {
+	_, respBody, err := c.doRequestFull(ctx, method, path, body, out, true)
+	return respBody, err
+}
+
+// doRequestFull is the shared implementation behind doRequest,
+// doRequestHeaders and doRequestRawBody.
+func (c *Client) doRequestFull(ctx context.Context, method, path string, body, out any, retryOnAuthFailure bool) (http.Header, []byte, error) {
 	resp, respBody, err := c.rawRequest(ctx, method, path, body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized && retryOnAuthFailure {
@@ -193,19 +209,19 @@ func (c *Client) doRequestHeaders(ctx context.Context, method, path string, body
 		if loginErr := c.Login(ctx); loginErr == nil {
 			resp, respBody, err = c.rawRequest(ctx, method, path, body)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, parseAPIError(resp.StatusCode, respBody)
+		return nil, nil, parseAPIError(resp.StatusCode, respBody)
 	}
 
 	if out != nil && len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, out); err != nil {
-			return nil, fmt.Errorf("capital: decode response: %w", err)
+			return nil, nil, fmt.Errorf("capital: decode response: %w", err)
 		}
 	}
-	return resp.Header, nil
+	return resp.Header, respBody, nil
 }
