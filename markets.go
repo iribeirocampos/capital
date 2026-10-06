@@ -2,6 +2,7 @@ package capital
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 )
@@ -22,6 +23,46 @@ type Market struct {
 	Offer          float64 `json:"offer"`
 	High           float64 `json:"high"`
 	Low            float64 `json:"low"`
+}
+
+// MarketStatusTradeable is the MarketStatus of a market currently open for
+// dealing.
+const MarketStatusTradeable = "TRADEABLE"
+
+// IsTradeable reports whether the market is open for dealing.
+func (m *Market) IsTradeable() bool { return m.MarketStatus == MarketStatusTradeable }
+
+// UnmarshalJSON accepts both the flat shape used by list/search endpoints and
+// the nested shape of GET /markets/{epic}, where the epic/name/type live
+// under "instrument" and status/prices under "snapshot".
+func (m *Market) UnmarshalJSON(b []byte) error {
+	type plain Market
+	aux := struct {
+		plain
+		Instrument *struct {
+			Epic string `json:"epic"`
+			Name string `json:"name"`
+			Type string `json:"type"`
+		} `json:"instrument"`
+		Snapshot *struct {
+			MarketStatus string  `json:"marketStatus"`
+			Bid          float64 `json:"bid"`
+			Offer        float64 `json:"offer"`
+			High         float64 `json:"high"`
+			Low          float64 `json:"low"`
+		} `json:"snapshot"`
+	}{}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	*m = Market(aux.plain)
+	if in := aux.Instrument; in != nil {
+		m.Epic, m.InstrumentName, m.InstrumentType = in.Epic, in.Name, in.Type
+	}
+	if sn := aux.Snapshot; sn != nil {
+		m.MarketStatus, m.Bid, m.Offer, m.High, m.Low = sn.MarketStatus, sn.Bid, sn.Offer, sn.High, sn.Low
+	}
+	return nil
 }
 
 type marketNavigationResponse struct {
