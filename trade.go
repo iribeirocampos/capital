@@ -3,6 +3,7 @@ package capital
 import (
 	"context"
 	"net/http"
+	"time"
 )
 
 // Direction indicates whether a position or order buys or sells.
@@ -26,6 +27,9 @@ type stopProfitParams struct {
 	ProfitLevel    *float64 `json:"profitLevel,omitempty"`
 	ProfitDistance *float64 `json:"profitDistance,omitempty"`
 	ProfitAmount   *float64 `json:"profitAmount,omitempty"`
+
+	// GoodTillDate only applies to working orders.
+	GoodTillDate string `json:"goodTillDate,omitempty"`
 }
 
 // TradeOption configures optional risk-management parameters on
@@ -67,6 +71,11 @@ func WithProfitLevel(v float64) TradeOption {
 // WithProfitDistance sets a take-profit distance from the current price.
 func WithProfitDistance(v float64) TradeOption {
 	return func(p *stopProfitParams) { p.ProfitDistance = &v }
+}
+
+// WithGoodTillDate sets when a working order expires (sent as UTC).
+func WithGoodTillDate(t time.Time) TradeOption {
+	return func(p *stopProfitParams) { p.GoodTillDate = t.UTC().Format("2006-01-02T15:04:05") }
 }
 
 // WithProfitAmount sets a take-profit as a monetary amount.
